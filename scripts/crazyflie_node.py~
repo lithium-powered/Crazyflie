@@ -321,6 +321,35 @@ class CrazyflieNode:
         self.altReference_pub.publish(self.altReference)
         # self.zSpeed_pub.publish(self.zSpeed)
 
+    def publish_ar_position(self):
+	pub = rospy.Publisher('position', String, queue_size=10)
+	orientationPub = rospy.Publisher('orientation', String, queue_size=10)	
+	#orientationPub = rospy.Publisher('orientation', Marker)	
+	rospy.init_node('find_copter')
+	listener = tf.TransformListener()
+	while not rospy.is_shutdown():
+		try:
+			#orientationTopic = Marker() 
+			now = rospy.Time.now()
+			listener.waitForTransform('usb_cam', 'ar_marker_0', now, rospy.Duration(2))
+			position, orientation = listener.lookupTransform('usb_cam', 'ar_marker_0', now)
+
+			# Publish Position as a ROS Topic
+			positionTopic = str(position)				
+			rospy.loginfo(positionTopic)
+			pub.publish(positionTopic)
+
+			# Publish Orientation as a ROS Topic
+			orientationTopic = str(orientation)
+			rospy.loginfo(orientationTopic)
+			orientationPub.publish(orientationTopic)
+
+			#print "position", position, "orientation", orientation
+			#print "x", position[0], "y", position[1], "z", position[2]
+		except tf.Exception as e:
+			rospy.logerr(e)
+	#rospy.loginfo("Position: %f" % self.asl)
+
     # main loop 
     def run_node(self, time):
         self.cmd_thrust = 20000
@@ -338,6 +367,7 @@ class CrazyflieNode:
             self.crazyflie.commander.send_setpoint(0.0, 0.0, self.yaw, self.cmd_thrust)
 
         #rosbag record
+	self.publish_ar_position()
         self.publish_data()
 
     def pitch_node(self, t, degree):
