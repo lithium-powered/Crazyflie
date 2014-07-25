@@ -1,4 +1,3 @@
-#James' version
 #!/usr/bin/env python
 #
 # crazyflie_node.py
@@ -35,9 +34,7 @@ from std_msgs.msg import UInt16
 from std_msgs.msg import UInt32
 from std_msgs.msg import Float32
 from std_msgs.msg import String
- 
 logging.basicConfig(level=logging.DEBUG)
-
 class CrazyflieNode:
     """
     Class is required so that methods can access the object fields.
@@ -58,10 +55,14 @@ class CrazyflieNode:
         self.thrust = 0
         self.yaw = 0.0
 
-        self.cmd_thrust = 15000
-        self.cmd_pitch = 40.0
+        self.cmd_thrust = 0
+        self.cmd_pitch = 0.0
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
+	
+	self.desired_pitch = 10.0
+	self.pitch_coefficient = 1
+	self.delta_t = 0.01
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -102,7 +103,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/10/250K")
+        self.crazyflie.open_link("radio://0/9/250K")
  
     def shut_down(self):
         try:
@@ -227,7 +228,10 @@ class CrazyflieNode:
            
     def set_yaw(self, data):
         rospy.loginfo(rospy.get_name() + ": Setting yaw to: %d" % data.data)
-        self.cmd_yaw = data.data       
+        self.cmd_yaw = data.data
+
+    def pitch_control(self):
+	self.cmd_pitch += self.delta_t*self.pitch_coefficient*(self.desired_pitch - self.pitch)      
     
     def run_node(self):
         self.link_quality_pub.publish(self.link_quality)
@@ -237,11 +241,12 @@ class CrazyflieNode:
         self.roll_pub.publish(self.roll)
         self.thrust_pub.publish(self.thrust)
         self.yaw_pub.publish(self.yaw)
-        
+        #self.pitch_control()
         # Send commands to the Crazyflie
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
-         
+
+     
 def run():
     # Init the ROS node here, so we can split functionality
     # for this node across multiple classes        
@@ -250,10 +255,11 @@ def run():
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
     while not rospy.is_shutdown():
-	if node.cmd_pitch > -40.0:
-	   node.cmd_pitch -= 2.0
+        #pitch changing test
+	#if node.cmd_pitch > -40.0:
+	   #node.cmd_pitch -= 2.0
         node.run_node()
-        rospy.sleep(0.5)
+        rospy.sleep(0.01)
     node.shut_down()
         
         
