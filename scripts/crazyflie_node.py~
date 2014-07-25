@@ -252,7 +252,7 @@ def run():
 	if node.cmd_pitch > -40.0:
 	   node.cmd_pitch -= 2.0
         node.run_node()
-        rospy.sleep(0.5)
+        rospy.sleep(0.1)
     node.shut_down()
         
         
