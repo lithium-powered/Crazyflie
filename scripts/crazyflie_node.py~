@@ -103,7 +103,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/10/250K")
+        self.crazyflie.open_link("radio://0/9/250K")
  
     def shut_down(self):
         try:
@@ -214,6 +214,13 @@ class CrazyflieNode:
         self.thrust = data["stabilizer.thrust"]
         self.yaw    = data["stabilizer.yaw"]
 
+    def log_motor_data(self, data):
+        self.pitch  = data["stabilizer.pitch"]
+        self.roll   = data["stabilizer.roll"]
+        self.thrust = data["stabilizer.thrust"]
+        self.yaw    = data["stabilizer.yaw"]
+
+    #pitch/roll/thrust/yaw setting function
     def set_pitch(self, data):
         rospy.loginfo(rospy.get_name() + ": Setting pitch to: %d" % data.data)
         self.cmd_pitch = data.data
@@ -230,9 +237,30 @@ class CrazyflieNode:
         rospy.loginfo(rospy.get_name() + ": Setting yaw to: %d" % data.data)
         self.cmd_yaw = data.data
 
+    #motor setting function
+    def set_m1(self, thrust):
+	self.crazyflie.param.set_value("motors.motorPowerM1", thrust)
+
+    def set_m2(self, thrust):
+	self.crazyflie.param.set_value("motors.motorPowerM2", thrust)
+
+    def set_m3(self, thrust):
+	self.crazyflie.param.set_value("motors.motorPowerM3", thrust)
+
+    def set_m4(self, thrust):
+	self.crazyflie.param.set_value("motors.motorPowerM4", thrust)
+
+    def motors_shut_down(self):
+	self.set_m1("0")
+	self.set_m2("0")
+	self.set_m3("0")
+	self.set_m4("0")
+
+    #pitch control function
     def pitch_control(self):
 	self.cmd_pitch += self.delta_t*self.pitch_coefficient*(self.desired_pitch - self.pitch)      
-    
+
+    # main loop 
     def run_node(self):
         self.link_quality_pub.publish(self.link_quality)
         self.packet_count_pub.publish(self.packetsSinceConnection)
@@ -245,6 +273,8 @@ class CrazyflieNode:
         # Send commands to the Crazyflie
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+        #test
+	self.set_m1("20000")
 
      
 def run():
@@ -259,7 +289,8 @@ def run():
 	#if node.cmd_pitch > -40.0:
 	   #node.cmd_pitch -= 2.0
         node.run_node()
-        rospy.sleep(0.01)
+        rospy.sleep(1)#0.01
+    node.motors_shut_down()
     node.shut_down()
         
         
