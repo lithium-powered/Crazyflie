@@ -60,9 +60,9 @@ class CrazyflieNode:
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
 	
-	self.desired_pitch = 10.0
-	self.pitch_coefficient = 1
-	self.delta_t = 0.01
+    	self.desired_pitch = 10.0
+    	self.pitch_coefficient = 1
+    	self.delta_t = 0.01
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -230,8 +230,8 @@ class CrazyflieNode:
         self.cmd_roll = data.data       
                
     def set_thrust(self, data):
-        rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % data.data)
-        self.cmd_thrust = data.data      
+        rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % data)
+        self.cmd_thrust = data      
            
     def set_yaw(self, data):
         rospy.loginfo(rospy.get_name() + ": Setting yaw to: %d" % data.data)
@@ -274,7 +274,8 @@ class CrazyflieNode:
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
         #test
-	self.set_m1("20000")
+        # self.set_m1("20000")
+        self.set_thrust(20000);
 
      
 def run():
