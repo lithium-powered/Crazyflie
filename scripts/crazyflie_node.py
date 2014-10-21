@@ -24,7 +24,7 @@
 
 import rospy
 import logging
- 
+import math
 
 import cflib.crtp
 from cfclient.utils.logconfigreader import LogConfig
@@ -55,14 +55,26 @@ class CrazyflieNode:
         self.thrust = 0
         self.yaw = 0.0
 
+        self.accel_x = 0.0
+        self.accel_y = 0.0
+        self.accel_z = 0.0
+
         self.cmd_thrust = 0
         self.cmd_pitch = 0.0
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
 	
-    	self.desired_pitch = 10.0
+    	self.desired_pitch = 0.0
     	self.pitch_coefficient = 1
-    	self.delta_t = 0.01
+        self.desired_roll = 0.0
+        self.roll_coefficient = 1
+        self.desired_yaw = 2.0
+        self.yaw_coefficient = 1
+
+        self.thrust_coefficient = 1
+        self.desired_accel_z = 0.9
+        self.thrust_kp = -40000
+    	self.kp = 0.5
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -84,8 +96,6 @@ class CrazyflieNode:
         rospy.Subscriber('roll', UInt16, self.set_roll)
         rospy.Subscriber('thrust', UInt16, self.set_thrust)
         rospy.Subscriber('yaw', UInt16, self.set_yaw)
-
-
 
         # Connection callbacks
         #TODO: for a lot of these, we just update the status and/or publish a value
@@ -201,20 +211,19 @@ class CrazyflieNode:
         self.packetsSinceConnection += 1
 
     def log_accel_data(self, data):
-        rospy.loginfo("Accelerometer: x=%.2f, y=%.2f, z=%.2f" %
-                        (data["acc.x"], data["acc.y"], data["acc.z"]))
+        self.accel_x = data["acc.x"]
+        self.accel_y = data["acc.y"]
+        self.accel_z = data["acc.z"]
+        # rospy.loginfo("Accelerometer: x=%.2f, y=%.2f, z=%.2f" %
+        #                 (data["acc.x"], data["acc.y"], data["acc.z"]))
 
     def log_motor_data(self, data):
         self.motor_status = ("Motors: m1=%d, m2=%d, m3=%d, m4=%d" %
                         (data["m1"], data["m2"], data["m3"], data["m4"]))
 
     def log_pitch_data(self, data):
-        self.pitch  = data["stabilizer.pitch"]
-        self.roll   = data["stabilizer.roll"]
-        self.thrust = data["stabilizer.thrust"]
-        self.yaw    = data["stabilizer.yaw"]
-
-    def log_motor_data(self, data):
+        # rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
+        #     (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
@@ -231,7 +240,7 @@ class CrazyflieNode:
                
     def set_thrust(self, data):
         rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % data)
-        self.cmd_thrust = data      
+        self.cmd_thrust = data.data      
            
     def set_yaw(self, data):
         rospy.loginfo(rospy.get_name() + ": Setting yaw to: %d" % data.data)
@@ -239,29 +248,47 @@ class CrazyflieNode:
 
     #motor setting function
     def set_m1(self, thrust):
-	self.crazyflie.param.set_value("motors.motorPowerM1", thrust)
+        self.crazyflie.param.set_value("motors.motorPowerM1", thrust)
 
     def set_m2(self, thrust):
-	self.crazyflie.param.set_value("motors.motorPowerM2", thrust)
+        self.crazyflie.param.set_value("motors.motorPowerM2", thrust)
 
     def set_m3(self, thrust):
-	self.crazyflie.param.set_value("motors.motorPowerM3", thrust)
+        self.crazyflie.param.set_value("motors.motorPowerM3", thrust)
 
     def set_m4(self, thrust):
-	self.crazyflie.param.set_value("motors.motorPowerM4", thrust)
+        self.crazyflie.param.set_value("motors.motorPowerM4", thrust)
 
     def motors_shut_down(self):
-	self.set_m1("0")
-	self.set_m2("0")
-	self.set_m3("0")
-	self.set_m4("0")
+        self.set_m1("0")
+        self.set_m2("0")
+        self.set_m3("0")
+        self.set_m4("0")
 
     #pitch control function
     def pitch_control(self):
-	self.cmd_pitch += self.delta_t*self.pitch_coefficient*(self.desired_pitch - self.pitch)      
+        self.cmd_pitch += self.kp*self.pitch_coefficient*(self.desired_pitch - self.pitch)
+        #rospy.loginfo(rospy.get_name() + ": Setting pitch to: %d" % self.cmd_pitch) 
+
+    #roll control function
+    def roll_control(self):
+        self.cmd_roll += self.kp*self.roll_coefficient*(self.desired_roll - self.roll) 
+        #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll)   
+    
+    #yaw control function
+    def yaw_control(self):
+        self.cmd_yaw += self.kp*self.yaw_coefficient*(self.desired_yaw - self.yaw) 
+        #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
+
+    #hover control function
+    def z_control(self):
+        self.cmd_thrust += self.thrust_kp*self.thrust_coefficient*(self.desired_accel_z - self.accel_z) 
+        #rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % self.cmd_thrust)
+        print str(self.cmd_thrust) + " " + str(self.accel_z)
 
     # main loop 
     def run_node(self):
+        self.cmd_thrust = 36000
         self.link_quality_pub.publish(self.link_quality)
         self.packet_count_pub.publish(self.packetsSinceConnection)
         self.motor_status_pub.publish(self.motor_status)
@@ -269,13 +296,18 @@ class CrazyflieNode:
         self.roll_pub.publish(self.roll)
         self.thrust_pub.publish(self.thrust)
         self.yaw_pub.publish(self.yaw)
-        #self.pitch_control()
+        # CONTROLLERS
+        self.pitch_control()
+        self.roll_control()
+        self.yaw_control()
+        self.z_control()
         # Send commands to the Crazyflie
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+        
         #test
         # self.set_m1("20000")
-        self.set_thrust(20000);
+        # self.set_thrust(20000);
 
      
 def run():

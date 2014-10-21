@@ -26,6 +26,16 @@ TROUBLESHOOT
 		(*Second line is important. You need to add the directry which includes packages to environment variable.)
 	b. Run "source devel/setup.bash" in the ~/catkin_ws directory
 
+3. If error after "rosrun crazyflie crazyflie_node.py" with message "[rospack] Error: package 'crazyflie' not found":
+	a. Run "source devel/setup.bash" again in the ~/catkin_ws directory
+
+4. If error "ImportError: No module named cflib.crtp", then we must clone these repos into the ~/crazyflie/scripts directory:
+	a. Run "git clone https://github.com/jlamyi/crazyflie_old_library.git" in scripts directory
+	b. Move repos, "cfclient" and "cflib" into ~/crazyflie/scripts directory:
+		b1. Run "mv cfclient ~/catkin_ws/src/crazyflie/scripts/"
+		b2. Run "mv cflib ~/catkin_ws/src/crazyflie/scripts/"
+		b3. Run "rm -rf crazyflie_old_library" in the ~/crazyflie/scripts directory
+
 B) SETUP USB DONGLE
 1. Clone "crazyradio-firmware" Git repo:
 https://github.com/bitcraze/crazyradio-firmware.git
