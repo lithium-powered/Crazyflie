@@ -288,7 +288,7 @@ class CrazyflieNode:
 
     # main loop 
     def run_node(self):
-        self.cmd_thrust = 36000
+        self.cmd_thrust = 42000 #value subject to change based on battery life
         self.link_quality_pub.publish(self.link_quality)
         self.packet_count_pub.publish(self.packetsSinceConnection)
         self.motor_status_pub.publish(self.motor_status)
@@ -300,7 +300,7 @@ class CrazyflieNode:
         self.pitch_control()
         self.roll_control()
         self.yaw_control()
-        self.z_control()
+        # self.z_control()
         # Send commands to the Crazyflie
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)

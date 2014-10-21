@@ -24,10 +24,13 @@ TROUBLESHOOT
 		export /opt/ros/electric/setup.bash
 		export ROS_PACKAGE_PATH=~/ros_workspace:/opt/ros/electric/stacks
 		(*Second line is important. You need to add the directry which includes packages to environment variable.)
-	b. Run "source devel/setup.bash" in the ~/catkin_ws directory
+	b. Run "gedit ~/.bashrc" in your home directory and add:
+		cd ~/catkin_ws/
+		source devel/setup.bash
+		cd ~/
 
 3. If error after "rosrun crazyflie crazyflie_node.py" with message "[rospack] Error: package 'crazyflie' not found":
-	a. Run "source devel/setup.bash" again in the ~/catkin_ws directory
+	a. Check step 2b or run the "source devel/setup.bash" again in the ~/catkin_ws directory
 
 4. If error "ImportError: No module named cflib.crtp", then we must clone these repos into the ~/crazyflie/scripts directory:
 	a. Run "git clone https://github.com/jlamyi/crazyflie_old_library.git" in scripts directory
