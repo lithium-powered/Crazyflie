@@ -1,7 +1,7 @@
 [Created on 10/9/2014]
 [Updated on 10/10/2014]
 
-SETUP WORKSPACE
+A) SETUP WORKSPACE
 
 1. Create a workspace for catkin:
 http://wiki.ros.org/catkin/Tutorials/create_a_workspace
@@ -20,15 +20,17 @@ TROUBLESHOOT
 	b. Clone "https://github.com/bitcraze/crazyradio-firmware.git" into ~/scr directory
 	c. Manually install dependencies: http://wiki.bitcraze.se/projects:crazyflie:pc_utils:install
 2. If "rosrun crazyflie crazyflie_node.py" does not work:
-	a. Run "~gedit ./bashrc" in your home directory and add:
+	a. Run "gedit ~/.bashrc" in your home directory and add:
 		export /opt/ros/electric/setup.bash
 		export ROS_PACKAGE_PATH=~/ros_workspace:/opt/ros/electric/stacks
-		(*Second line is important. You need to add the directry which includes packages to 			environment variable.)
+		(*Second line is important. You need to add the directry which includes packages to environment variable.)
 	b. Run "source devel/setup.bash" in the ~/catkin_ws directory
 
-SETUP USB DONGLE
+B) SETUP USB DONGLE
 1. Clone "crazyradio-firmware" Git repo:
 https://github.com/bitcraze/crazyradio-firmware.git
+
+Note: For VMs, make sure the USB is readable and checked under the VM Menu "Devices > USB Devices"
 
 2. USB Bootloader: http://wiki.bitcraze.se/projects:crazyradio:programming
 
