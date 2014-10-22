@@ -50,31 +50,26 @@ class CrazyflieNode:
         self.link_quality = 0.0
         self.packetsSinceConnection = 0
         self.motor_status = ""
+
+	#SENSORS
         self.pitch = 0.0
         self.roll = 0.0
         self.thrust = 0
         self.yaw = 0.0
-
         self.accel_x = 0.0
         self.accel_y = 0.0
         self.accel_z = 0.0
+	self.pressure = 0.0
 
+	#ACTUATOR ATTRIBUTES
         self.cmd_thrust = 0
         self.cmd_pitch = 0.0
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
-	
-    	self.desired_pitch = 0.0
-    	self.pitch_coefficient = 1
-        self.desired_roll = 0.0
-        self.roll_coefficient = 1
-        self.desired_yaw = 2.0
-        self.yaw_coefficient = 1
 
-        self.thrust_coefficient = 1
-        self.desired_accel_z = 0.9
-        self.thrust_kp = -40000
-    	self.kp = 0.5
+	#GAINS
+    	self.stabilizer_kp = 0.5
+        self.thrust_kp = -1000
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -113,11 +108,12 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/9/250K")
+        self.crazyflie.open_link("radio://0/10/250K")
  
     def shut_down(self):
         try:
             self.pitch_log.stop()
+            self.altimeter_log.stop()
         finally:
             self.crazyflie.close_link()
 
@@ -130,6 +126,7 @@ class CrazyflieNode:
         self.link_status = "Connect Setup Finished"
         self.link_status_pub.publish(self.link_status)
         
+	self.setupAltimeterLog()
         self.setupStabilizerLog()
 
         """
@@ -172,12 +169,27 @@ class CrazyflieNode:
         else:
             print("motor.m1/m2/m3/m4 not found in log TOC")
  
+    def setupAltimeterLog(self):
+        log_conf = LogConfig("Altimeter", 10)
+        log_conf.addVariable(LogVariable("baro.pressure", "float")) #see crazyflie-firmware/stabilizer.c file
+
+        self.altimeter_log = self.crazyflie.log.create_log_packet(log_conf)
+ 
+        if self.altimeter_log is not None:
+            self.altimeter_log.dataReceived.add_callback(self.log_altimeter_data)
+            self.altimeter_log.start()
+            print("barometer now logging")
+        else:
+            print("barometer ERROR")
+
     def setupStabilizerLog(self):
         log_conf = LogConfig("Pitch", 10)
         log_conf.addVariable(LogVariable("stabilizer.pitch", "float"))
         log_conf.addVariable(LogVariable("stabilizer.roll", "float"))
         log_conf.addVariable(LogVariable("stabilizer.thrust", "int32_t"))
         log_conf.addVariable(LogVariable("stabilizer.yaw", "float"))
+        #log_conf.addVariable(LogVariable("altimeter.pressure", "float"))
+
         self.pitch_log = self.crazyflie.log.create_log_packet(log_conf)
  
         if self.pitch_log is not None:
@@ -222,12 +234,16 @@ class CrazyflieNode:
                         (data["m1"], data["m2"], data["m3"], data["m4"]))
 
     def log_pitch_data(self, data):
-        # rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
-        #     (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
+        #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
+        #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
         self.yaw    = data["stabilizer.yaw"]
+
+    def log_altimeter_data(self, data):
+        self.pressure = data["baro.pressure"]
+        rospy.loginfo("Data: %.2f" % (data["baro.pressure"]))
 
     #pitch/roll/thrust/yaw setting function
     def set_pitch(self, data):
@@ -265,42 +281,46 @@ class CrazyflieNode:
         self.set_m3("0")
         self.set_m4("0")
 
-    #pitch control function
-    def pitch_control(self):
-        self.cmd_pitch += self.kp*self.pitch_coefficient*(self.desired_pitch - self.pitch)
+    def control_pitch(self, desired):
+        self.cmd_pitch += self.stabilizer_kp * (desired - self.pitch)
         #rospy.loginfo(rospy.get_name() + ": Setting pitch to: %d" % self.cmd_pitch) 
 
-    #roll control function
-    def roll_control(self):
-        self.cmd_roll += self.kp*self.roll_coefficient*(self.desired_roll - self.roll) 
+    def control_roll(self, desired):
+        self.cmd_roll += self.stabilizer_kp * (desired - self.roll) 
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll)   
     
-    #yaw control function
-    def yaw_control(self):
-        self.cmd_yaw += self.kp*self.yaw_coefficient*(self.desired_yaw - self.yaw) 
+    def control_yaw(self, desired):
+        self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
 
-    #hover control function
-    def z_control(self):
-        self.cmd_thrust += self.thrust_kp*self.thrust_coefficient*(self.desired_accel_z - self.accel_z) 
+    def control_height(self, desired):
+        self.cmd_thrust += self.thrust_kp * (desired - self.pressure) 
+
+	if (self.cmd_thrust > 60000):
+            self.cmd_thrust = 60000
+        elif (self.cmd_thrust < 1000):
+            self.cmd_thrust = 1000
+
         #rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % self.cmd_thrust)
-        print str(self.cmd_thrust) + " " + str(self.accel_z)
+        print str(self.cmd_thrust) + " " + str(self.pressure)
 
     # main loop 
     def run_node(self):
-        self.cmd_thrust = 42000 #value subject to change based on battery life
-        self.link_quality_pub.publish(self.link_quality)
-        self.packet_count_pub.publish(self.packetsSinceConnection)
-        self.motor_status_pub.publish(self.motor_status)
-        self.pitch_pub.publish(self.pitch)
-        self.roll_pub.publish(self.roll)
-        self.thrust_pub.publish(self.thrust)
-        self.yaw_pub.publish(self.yaw)
+        self.cmd_thrust = 10000 #value subject to change based on battery life
+        #self.link_quality_pub.publish(self.link_quality)
+        #self.packet_count_pub.publish(self.packetsSinceConnection)
+        #self.motor_status_pub.publish(self.motor_status)
+        #self.pitch_pub.publish(self.pitch)
+        #self.roll_pub.publish(self.roll)
+        #self.thrust_pub.publish(self.thrust)
+        #self.yaw_pub.publish(self.yaw)
         # CONTROLLERS
-        self.pitch_control()
-        self.roll_control()
-        self.yaw_control()
-        # self.z_control()
+        self.control_pitch(0.0)
+        self.control_roll(0.0)
+        self.control_yaw(0.0)
+
+	#self.control_height(1003.45)
+
         # Send commands to the Crazyflie
         #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
         self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
@@ -317,12 +337,10 @@ def run():
     print "yes lets start!!\n"
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
+    loop_rate = rospy.Rate(10) #10 Hz
     while not rospy.is_shutdown():
-        #pitch changing test
-	#if node.cmd_pitch > -40.0:
-	   #node.cmd_pitch -= 2.0
         node.run_node()
-        rospy.sleep(1)#0.01
+        loop_rate.sleep()
     node.motors_shut_down()
     node.shut_down()
         
