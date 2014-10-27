@@ -64,29 +64,20 @@ class CrazyflieNode:
         self.accel_z = 0.0
         self.pressure = 0.0
         self.zSpeed = 0.0
-        self.zSpeedSum = 0.0
+        self.asl = 0.0
         self.vSpeedAcc = 0.0
         self.vSpeedASL = 0.0
-        self.asl = 0.0
 
         #ACTUATOR ATTRIBUTES
-        self.max_thrust = 60000
-        self.min_thrust = 0
-        self.base_thrust = 36000
         self.cmd_thrust = 20000
         self.cmd_pitch = 0.0
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
-        self.ref_height = 0.0
-        self.height_pid_val = 0.0
-        self.pid_alpha = 0.5
-        self.height_error = 0.0
-        self.height_controller = PID()
+        self.altHold = False
 
 
         #GAINS
     	self.stabilizer_kp = 0.5
-        self.thrust_kp = -1000
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -143,7 +134,7 @@ class CrazyflieNode:
     def connectSetupFinished(self, linkURI):
         self.link_status = "Connect Setup Finished"
         self.link_status_pub.publish(self.link_status)
-        self.setupAltimeterLog()
+        #self.setupAltimeterLog()
         self.setupStabilizerLog()
         self.setupAccelLog()
         self.setupMotorLog()
@@ -266,16 +257,6 @@ class CrazyflieNode:
         self.asl = data["baro.asl"]
         self.vSpeedAcc = data["altHold.vSpeedAcc"]
         self.vSpeedASL = data["altHold.vSpeedASL"]
-        if (self.ref_height == 0.0):
-            print "Current Height: ", self.asl
-            print "Ref Height Set to: ", (self.asl)
-
-            self.ref_height = self.asl
-
-            #PID Library
-            self.height_controller.setReference(self.ref_height)
-            self.height_controller.setGains(1, 0, 0.0) #(0.5, 0.18, 0.0)
-            self.height_pid_val = self.height_controller.update(self.asl, False)
 
     #pitch/roll/thrust/yaw setting function
     def set_pitch(self, data):
@@ -329,78 +310,25 @@ class CrazyflieNode:
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
 
     def control_height(self):
-        # if (self.ref_height != 0.0):
-            #zSpeed is positive going up negative going down
-            # error = (self.ref_height - self.asl)*.8 + (1 - self.zSpeedSum)*.2
+        self.altHold = True
 
-            # if (abs(self.zSpeed < 1)):
-            #     self.zSpeedSum += self.zSpeed
-            # kp = 1000
-
-            # if (error > 0 and self.zSpeed <= 0):
-            #     self.cmd_thrust = limit_thrust(self.pid_alpha*self.cmd_thrust + (1-self.pid_alpha)*kp*error)
-            # elif (error < 0 and self.zSpeed > 0):
-            #     self.cmd_thrust = limit_thrust(self.pid_alpha*self.cmd_thrust + (1-self.pid_alpha)*kp*error)
-
-            # # if (error > 0):
-            # #     self.cmd_thrust = (self.pid_alpha * self.cmd_thrust) + (1 - self.pid_alpha) * kp * error
-            # # elif (error < 0):
-            # #     self.cmd_thrust = (self.pid_alpha * self.cmd_thrust) - (1 - self.pid_alpha) * kp * error
-            # print "Thrust: ", self.cmd_thrust, "Error: ", error, " ASL: ", self.asl, "zSpeed: ", self.zSpeed, "zSpeedSum: ", self.zSpeedSum
-        if (self.ref_height != 0.0):
-            self.height_error = 0.95*self.height_error + 0.05*constrain(deadband(self.asl - self.height_controller.getReference(), 0.0), -1, 1)
-            
-            if (self.height_error > 0.05):
-                self.cmd_thrust = self.base_thrust-2000
-            elif (self.height_error < -.05):
-                self.cmd_thrust = self.base_thrust+2000
-
-            print "Error: ", self.height_error, " Thrust: ", self.cmd_thrust
-
-            # self.height_controller.setError(-1*self.height_error)
-
-            # #get control from PID controller don't update error ^done above
-            # self.height_pid_val = (self.pid_alpha * self.height_pid_val) + (1 - self.pid_alpha) * ((self.vSpeedAcc * -48) + self.height_controller.update(self.asl, False))
-
-            # #compute new thrust, 13000 is for unit conversion
-            # self.cmd_thrust = .95 * self.cmd_thrust + 0.05 * min(self.max_thrust, limit_thrust(self.base_thrust + self.height_pid_val * 13000))
-            #self.cmd_thrust = max(self.min_thrust, min(self.max_thrust, limit_thrust(self.base_thrust + self.height_pid_val * 13000)))
-            # print "Reference Height: ", self.ref_height, " Height Error: ", self.height_error, " PID_VAL: ", self.height_pid_val, " Thrust: ", self.cmd_thrust
-   
     # main loop 
-    def run_node(self):
+    def run_node(self, time):
         # CONTROLLERS
         self.control_pitch(0.0)
         self.control_roll(0.0)
         self.control_yaw(0.0)
-
-        self.cmd_thrust = 36000
-        # if (self.ref_height == 0.0):
-        #     self.cmd_thrust = self.base_thrust
-        # else:
-        #     self.control_height()
+        self.cmd_thrust = 40000
+        print "Time since start: ", time
+        if (time > 3):
+            self.control_height()
 
         #Send commands to the Crazyflie
-        self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
-
-def deadband(value, threshold):
-    if (abs(value) < threshold):
-        value = 0
-    elif (value > 0):
-        value -= threshold
-    elif (value < 0):
-        value += threshold
-    return value
-
-def constrain(value, min_val, max_val):
-    return min(max_val, max(min_val, value))
-
-def limit_thrust(value):
-    if (value > 65535):
-        value = 65535
-    elif (value < 0):
-        value = 0
-    return value
+        if (self.altHold):
+            self.crazyflie.param.set_value("flightmode.althold", "True")
+            self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
+        else:
+            self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
 
 def run():
     # Init the ROS node here, so we can split functionality
@@ -409,10 +337,11 @@ def run():
     print "yes lets start!!\n"
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
-    loop_rate = rospy.Rate(50) #50 Hz
+    loop_rate = rospy.Rate(100) #100 Hz
+    start = rospy.get_time()
 
     while not rospy.is_shutdown():
-        node.run_node()
+        node.run_node(rospy.get_time() - start)
         loop_rate.sleep()
     node.motors_shut_down()
     node.shut_down()
