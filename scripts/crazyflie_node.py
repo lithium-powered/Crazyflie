@@ -67,6 +67,7 @@ class CrazyflieNode:
         self.asl = 0.0
         self.vSpeedAcc = 0.0
         self.vSpeedASL = 0.0
+        self.cycle_count = 0
 
         #ACTUATOR ATTRIBUTES
         self.cmd_thrust = 20000
@@ -116,7 +117,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/10/250K")
+        self.crazyflie.open_link("radio://0/9/250K")
  
     def shut_down(self):
         try:
@@ -246,6 +247,7 @@ class CrazyflieNode:
     def log_pitch_data(self, data):
         #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
         #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
+
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
@@ -305,30 +307,65 @@ class CrazyflieNode:
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll)   
     
     def control_yaw(self, desired):
-        # self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
-        self.cmd_yaw += 1
+        #self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
+        self.cmd_yaw += 0.5
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
 
-    def control_height(self):
-        self.altHold = True
+    def control_height(self, boolean):
+        self.altHold = boolean
 
     # main loop 
     def run_node(self, time):
         # CONTROLLERS
-        self.control_pitch(0.0)
-        self.control_roll(0.0)
-        self.control_yaw(0.0)
-        self.cmd_thrust = 40000
-        print "Time since start: ", time
-        if (time > 3):
-            self.control_height()
+        print "Time since start: ", time, "Thrust: ", self.thrust
+        if (time > 2 and self.thrust != 0):
+            self.cycle_count += 1
+            self.control_height(True)
 
         #Send commands to the Crazyflie
-        if (self.altHold):
+        if (self.altHold and self.cycle_count < 100):
             self.crazyflie.param.set_value("flightmode.althold", "True")
-            self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
+            self.cmd_roll = 0.0
+            self.cmd_yaw = 0.0
+            self.cmd_pitch = 0.0
+            self.cmd_thrust = 32767
         else:
-            self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+            self.control_yaw(0.0)
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            self.cmd_thrust = self.thrust
+            if (self.cycle_count == 0):
+                self.control_pitch(0.0)
+                self.control_roll(0.0)
+                self.control_yaw(0.0)
+                self.cmd_thrust = 38000
+            elif (self.cycle_count > 500):
+                cycle_count = 1
+            elif (self.cycle_count < 150):
+                self.control_roll(0.0)
+                self.control_pitch(5.0)
+            elif (self.cycle_count < 200):
+                self.control_roll(5.0)
+                self.control_pitch(0.0)
+            elif (self.cycle_count < 250):
+                self.control_roll(0.0)
+                self.control_pitch(-5.0)
+            elif (self.cycle_count < 300):
+                self.control_roll(-5.0)
+                self.control_pitch(0.0)
+            elif (self.cycle_count < 350):
+                self.control_roll(0.0)
+                self.control_pitch(-5.0)
+            elif (self.cycle_count < 400):
+                self.control_roll(5.0)
+                self.control_pitch(0.0)
+            elif (self.cycle_count < 450):
+                self.control_roll(0.0)
+                self.control_pitch(5.0)
+
+        self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+
+           
+
 
 def run():
     # Init the ROS node here, so we can split functionality
