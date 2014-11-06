@@ -248,6 +248,7 @@ class CrazyflieNode:
     def log_pitch_data(self, data):
         #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
         #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
+
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
@@ -308,8 +309,8 @@ class CrazyflieNode:
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll)   
     
     def control_yaw(self, desired):
-        # self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
-        self.cmd_yaw += 1
+        #self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
+        self.cmd_yaw += 0.5
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
 
     def control_height(self, boolean):
