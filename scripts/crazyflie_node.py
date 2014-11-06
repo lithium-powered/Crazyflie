@@ -25,6 +25,7 @@
 import rospy
 import logging
 import math
+import time
 
 import cflib.crtp
 from pid import PID
@@ -67,6 +68,7 @@ class CrazyflieNode:
         self.asl = 0.0
         self.vSpeedAcc = 0.0
         self.vSpeedASL = 0.0
+        self.logStarted = False
 
         #ACTUATOR ATTRIBUTES
         self.cmd_thrust = 20000
@@ -116,7 +118,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/10/250K")
+        self.crazyflie.open_link("radio://0/9/250K")
  
     def shut_down(self):
         try:
@@ -250,6 +252,7 @@ class CrazyflieNode:
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
         self.yaw    = data["stabilizer.yaw"]
+        self.logStarted = True
 
     def log_altimeter_data(self, data):
         self.pressure = data["baro.pressure"]
@@ -309,26 +312,36 @@ class CrazyflieNode:
         self.cmd_yaw += 1
         #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
 
-    def control_height(self):
-        self.altHold = True
+    def control_height(self, boolean):
+        if (boolean):
+            self.crazyflie.param.set_value("flightmode.althold", "True")
+            self.altHold = True
+        else:
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            self.altHold = False
 
     # main loop 
-    def run_node(self, time):
-        # CONTROLLERS
-        self.control_pitch(0.0)
-        self.control_roll(0.0)
-        self.control_yaw(0.0)
-        self.cmd_thrust = 40000
-        print "Time since start: ", time
-        if (time > 3):
-            self.control_height()
+    def run_node(self, t):
+        print "Time since start: ", t
 
-        #Send commands to the Crazyflie
-        if (self.altHold):
-            self.crazyflie.param.set_value("flightmode.althold", "True")
-            self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
-        else:
-            self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+        #wait to do any actuation until sensors begin streaming data back
+        if (self.logStarted):
+            #SET POINTS
+            self.control_pitch(0.0)
+            self.control_roll(0.0)
+            self.control_yaw(0.0)
+            self.cmd_thrust = 45000
+
+            if (self.altHold == False):
+                print "Prepare to Launch in 2 Seconds!"
+                time.sleep(2)
+                self.control_height(True)
+
+            #Send commands to the Crazyflie
+            if (self.altHold):
+                self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
+            else:
+                self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
 
 def run():
     # Init the ROS node here, so we can split functionality
