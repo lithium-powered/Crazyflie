@@ -117,7 +117,9 @@ class CrazyflieNode:
         
         #TODO: should be configurable, and support multiple devices
         self.crazyflie.open_link("radio://0/10/250K")
- 
+    def getZ(self):
+        return self.accel_z
+
     def shut_down(self):
         try:
             self.pitch_log.stop()
@@ -244,7 +246,7 @@ class CrazyflieNode:
                         (data["m1"], data["m2"], data["m3"], data["m4"]))
 
     def log_pitch_data(self, data):
-        #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
+        # rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
         #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
@@ -312,14 +314,19 @@ class CrazyflieNode:
     def control_height(self):
         self.altHold = True
 
-    # main loop 
-    def run_node(self, time):
-        # CONTROLLERS
+    def hover(self):
         self.control_pitch(0.0)
         self.control_roll(0.0)
         self.control_yaw(0.0)
-        self.cmd_thrust = 40000
-        print "Time since start: ", time
+
+    # def figure8():
+
+    # main loop 
+    def run_node(self, time):
+        # CONTROLLERS
+        self.hover()
+        self.cmd_thrust = 42000
+        # print "Time since start: ", time
         if (time > 3):
             self.control_height()
 
@@ -343,6 +350,10 @@ def run():
     while not rospy.is_shutdown():
         node.run_node(rospy.get_time() - start)
         loop_rate.sleep()
+
+        if (node.accel_z < -0.95): # close program if crazyflie is oriented up-side-down
+            print "crazyflie shutting down"
+            return
     node.motors_shut_down()
     node.shut_down()
                
