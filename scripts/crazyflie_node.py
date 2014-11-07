@@ -332,7 +332,7 @@ class CrazyflieNode:
             self.control_pitch(0.0)
             self.control_roll(0.0)
             self.control_yaw(0.0)
-            self.cmd_thrust = 45000
+            self.cmd_thrust = 20000 #45000
 
             if (self.altHold == False):
                 print "Prepare to Launch in 2 Seconds!"
@@ -341,7 +341,7 @@ class CrazyflieNode:
 
             #Send commands to the Crazyflie
             if (self.altHold):
-                self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
+                self.crazyflie.commander.send_setpoint(0, 0, 0, 20000) #32767
             else:
                 self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
 
