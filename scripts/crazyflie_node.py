@@ -69,6 +69,7 @@ class CrazyflieNode:
         self.vSpeedAcc = 0.0
         self.vSpeedASL = 0.0
         self.logStarted = False
+        self.altReference = 0.0
 
         #ACTUATOR ATTRIBUTES
         self.cmd_thrust = 20000
@@ -76,7 +77,6 @@ class CrazyflieNode:
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
         self.altHold = False
-
 
         #GAINS
     	self.stabilizer_kp = 0.5
@@ -89,13 +89,14 @@ class CrazyflieNode:
         self.link_status_pub  = rospy.Publisher('link_status', String, latch=True)
         self.link_quality_pub = rospy.Publisher('link_quality', Float32)
         self.packet_count_pub = rospy.Publisher('packet_count', UInt32)
-
         self.motor_status_pub = rospy.Publisher('motors', String)
-
         self.pitch_pub        = rospy.Publisher('stabilizer/pitch', Float32)
         self.roll_pub         = rospy.Publisher('stabilizer/roll', Float32)
         self.thrust_pub       = rospy.Publisher('stabilizer/thrust', Float32)
         self.yaw_pub          = rospy.Publisher('stabilizer/yaw', Float32)
+        self.asl_pub          = rospy.Publisher('baro/asl', Float32)
+        self.zSpeed_pub       = rospy.Publisher('altHold/zSpeed', Float32)
+        self.altReference_pub = rospy.Publisher('altHold/target', Float32)
  
         rospy.Subscriber('pitch', UInt16, self.set_pitch)
         rospy.Subscriber('roll', UInt16, self.set_roll)
@@ -118,7 +119,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/10/250K")
+        self.crazyflie.open_link("radio://0/9/250K")
     def getZ(self):
         return self.accel_z
 
@@ -138,7 +139,7 @@ class CrazyflieNode:
     def connectSetupFinished(self, linkURI):
         self.link_status = "Connect Setup Finished"
         self.link_status_pub.publish(self.link_status)
-        #self.setupAltimeterLog()
+        self.setupAltimeterLog()
         self.setupStabilizerLog()
         self.setupAccelLog()
         self.setupMotorLog()
@@ -185,6 +186,7 @@ class CrazyflieNode:
         log_conf.addVariable(LogVariable("altHold.vSpeedASL", "float")) 
         log_conf.addVariable(LogVariable("altHold.vSpeedAcc", "float")) 
         log_conf.addVariable(LogVariable("baro.asl", "float"))
+        log_conf.addVariable(LogVariable("altHold.target", "float"))
 
         self.altimeter_log = self.crazyflie.log.create_log_packet(log_conf)
  
@@ -263,6 +265,8 @@ class CrazyflieNode:
         self.asl = data["baro.asl"]
         self.vSpeedAcc = data["altHold.vSpeedAcc"]
         self.vSpeedASL = data["altHold.vSpeedASL"]
+        self.altReference = data["altHold.target"]
+        rospy.loginfo("ASL: %f" % self.asl)
 
     #pitch/roll/thrust/yaw setting function
     def set_pitch(self, data):
@@ -322,28 +326,46 @@ class CrazyflieNode:
             self.crazyflie.param.set_value("flightmode.althold", "False")
             self.altHold = False
 
+    def publish_data(self):
+        # self.link_quality_pub.publish(self.link_quality)
+        # self.packet_count_pub.publish(self.packetsSinceConnection)
+        # self.motor_status_pub.publish(self.motor_status)
+        # self.pitch_pub.publish(self.pitch)
+        # self.roll_pub.publish(self.roll)
+        # self.thrust_pub.publish(self.thrust)
+        # self.yaw_pub.publish(self.yaw)
+        self.asl_pub.publish(self.asl)
+        self.altReference_pub.publish(self.altReference)
+        # self.zSpeed_pub.publish(self.zSpeed)
+
     # main loop 
     def run_node(self, t):
-        print "Time since start: ", t
-
         #wait to do any actuation until sensors begin streaming data back
         if (self.logStarted):
+            #self.publish_data()
             #SET POINTS
             self.control_pitch(0.0)
             self.control_roll(0.0)
             self.control_yaw(0.0)
-            self.cmd_thrust = 20000 #45000
+            self.cmd_thrust = 0 #45000
 
             if (self.altHold == False):
                 print "Prepare to Launch in 2 Seconds!"
                 time.sleep(2)
+                for i in range(0, 50):
+                    self.crazyflie.commander.send_setpoint(0,0,0,43000)
+                    time.sleep(0.01)
                 self.control_height(True)
 
             #Send commands to the Crazyflie
             if (self.altHold):
-                self.crazyflie.commander.send_setpoint(0, 0, 0, 20000) #32767
+                # self.crazyflie.param.set_value("flightmode.althold", "False")
+                self.crazyflie.param.set_value("flightmode.althold", "True")
+                self.crazyflie.commander.send_setpoint(0, 0, 0, 32767) #32767
             else:
                 self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
+        else:
+            print "Time since start: ", t
 
 def run():
     # Init the ROS node here, so we can split functionality
@@ -359,9 +381,9 @@ def run():
         node.run_node(rospy.get_time() - start)
         loop_rate.sleep()
 
-        if (node.accel_z < -0.95): # close program if crazyflie is oriented up-side-down
-            print "crazyflie shutting down"
-            return
+        # if (node.accel_z < -0.95): # close program if crazyflie is oriented up-side-down
+        #     print "crazyflie shutting down"
+        #     return
     node.motors_shut_down()
     node.shut_down()
                
