@@ -69,7 +69,7 @@ class PID:
 		self.derivative = (self.error - self.prev_error) / self.dt
 		self.prev_error = self.error
 
-		return -(self.Kp*self.error + self.Ki*self.integral + self.Kd*self.derivative)
+		return (self.Kp*self.error + self.Ki*self.integral + self.Kd*self.derivative)
 
 
 

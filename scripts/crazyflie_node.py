@@ -25,6 +25,7 @@
 import rospy
 import logging
 import math
+import time
 
 import cflib.crtp
 from pid import PID
@@ -246,8 +247,9 @@ class CrazyflieNode:
                         (data["m1"], data["m2"], data["m3"], data["m4"]))
 
     def log_pitch_data(self, data):
-        #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
+        # rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
         #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
+
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
@@ -292,7 +294,6 @@ class CrazyflieNode:
 
     def set_m4(self, thrust):
         self.crazyflie.param.set_value("motors.motorPowerM4", thrust)
-
 
     # TO-DO: Safety Shut Down
     def motors_shut_down(self):
