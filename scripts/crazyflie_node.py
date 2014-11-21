@@ -116,7 +116,7 @@ class CrazyflieNode:
         self.crazyflie.receivedPacket.add_callback(self.receivedPacket)
         
         #TODO: should be configurable, and support multiple devices
-        self.crazyflie.open_link("radio://0/9/250K")
+        self.crazyflie.open_link("radio://0/10/250K")
     def getZ(self):
         return self.accel_z
 
@@ -319,10 +319,10 @@ class CrazyflieNode:
 
     # main loop 
     def run_node(self, time):
-        self.cmd_thrust = 40000
+        self.cmd_thrust = 45000
         print "Time since start: ", time
         if (time > 2):
-            print "---Stabilizing Height---"
+            # print "---Stabilizing Height---"
             self.control_height()
 
         #Send commands to the Crazyflie
@@ -330,8 +330,29 @@ class CrazyflieNode:
             self.crazyflie.param.set_value("flightmode.althold", "True")
             self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
         else:
-            self.yaw += 0.5
+            self.yaw += 1
             self.crazyflie.commander.send_setpoint(0.0, 0.0, self.yaw, self.cmd_thrust)
+
+        #rosbag record
+        self.publish_data()
+
+    def pitch_node(self, t, degree):
+        if (t > 4):
+            print "--- Pitching ---"
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            loop_rate = rospy.Rate(100)
+            for i in range(0, 50):
+                self.crazyflie.commander.send_setpoint(degree, 0.0, 0.0, self.thrust)
+                loop_rate.sleep()
+
+    def roll_node(self, t, degree):
+        if (t > 4):
+            print "--- Rolling ---"
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            loop_rate = rospy.Rate(100)
+            for i in range(0, 50):
+                self.crazyflie.commander.send_setpoint(0.0, degree, 0.0, self.thrust)
+                loop_rate.sleep()
 
 def run():
     # Init the ROS node here, so we can split functionality
@@ -341,11 +362,13 @@ def run():
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
     loop_rate = rospy.Rate(100) #100 Hz
+    print "Waiting to for Sensor Callbacks..."
     while (node.logStarted == False):
-        print "Waiting to for Sensor Callbacks..."
-    print "Finished! Launching..."
+        pass
+    print "Starting..."
     start = rospy.get_time()
 
+    DEGREE = 8.0
     while not rospy.is_shutdown():
         node.run_node(rospy.get_time() - start)
         loop_rate.sleep()
