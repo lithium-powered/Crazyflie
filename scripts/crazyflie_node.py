@@ -306,7 +306,7 @@ class CrazyflieNode:
 
     # main loop 
     def run_node(self):
-        self.cmd_thrust = 10000 #value subject to change based on battery life
+        self.cmd_thrust = 40000 #value subject to change based on battery life
         #self.link_quality_pub.publish(self.link_quality)
         #self.packet_count_pub.publish(self.packetsSinceConnection)
         #self.motor_status_pub.publish(self.motor_status)
