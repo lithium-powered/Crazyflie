@@ -319,10 +319,10 @@ class CrazyflieNode:
 
     # main loop 
     def run_node(self, time):
-        self.cmd_thrust = 45000
+        self.cmd_thrust = 40000
         print "Time since start: ", time
         if (time > 2):
-            # print "---Stabilizing Height---"
+            print "---Stabilizing Height---"
             self.control_height()
 
         #Send commands to the Crazyflie
@@ -361,8 +361,8 @@ def run():
     print "yes lets start!!\n"
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
-    loop_rate = rospy.Rate(100) #100 Hz
-    print "Waiting to for Sensor Callbacks..."
+    loop_rate = rospy.Rate(50) #100 Hz
+    print "Waiting for Sensor Callbacks..."
     while (node.logStarted == False):
         pass
     print "Starting..."
