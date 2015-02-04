@@ -25,8 +25,11 @@
 import rospy
 import logging
 import math
+import time
 
 import cflib.crtp
+from pid import PID
+
 from cfclient.utils.logconfigreader import LogConfig
 from cfclient.utils.logconfigreader import LogVariable
 from cflib.crazyflie import Crazyflie
@@ -35,6 +38,7 @@ from std_msgs.msg import UInt32
 from std_msgs.msg import Float32
 from std_msgs.msg import String
 logging.basicConfig(level=logging.DEBUG)
+
 class CrazyflieNode:
     """
     Class is required so that methods can access the object fields.
@@ -51,7 +55,7 @@ class CrazyflieNode:
         self.packetsSinceConnection = 0
         self.motor_status = ""
 
-	#SENSORS
+        #SENSORS
         self.pitch = 0.0
         self.roll = 0.0
         self.thrust = 0
@@ -59,17 +63,20 @@ class CrazyflieNode:
         self.accel_x = 0.0
         self.accel_y = 0.0
         self.accel_z = 0.0
-	self.pressure = 0.0
+        self.pressure = 0.0
+        self.zSpeed = 0.0
+        self.asl = 0.0
+        self.vSpeedAcc = 0.0
+        self.vSpeedASL = 0.0
+        self.logStarted = False
+        self.altReference = 0.0
 
-	#ACTUATOR ATTRIBUTES
-        self.cmd_thrust = 0
+        #ACTUATOR ATTRIBUTES
+        self.cmd_thrust = 20000
         self.cmd_pitch = 0.0
         self.cmd_roll = 0.0
         self.cmd_yaw = 0.0
-
-	#GAINS
-    	self.stabilizer_kp = 0.5
-        self.thrust_kp = -1000
+        self.altHold = False
         
         # Init the callbacks for the crazyflie lib
         self.crazyflie = Crazyflie()
@@ -79,13 +86,14 @@ class CrazyflieNode:
         self.link_status_pub  = rospy.Publisher('link_status', String, latch=True)
         self.link_quality_pub = rospy.Publisher('link_quality', Float32)
         self.packet_count_pub = rospy.Publisher('packet_count', UInt32)
-
         self.motor_status_pub = rospy.Publisher('motors', String)
-
         self.pitch_pub        = rospy.Publisher('stabilizer/pitch', Float32)
         self.roll_pub         = rospy.Publisher('stabilizer/roll', Float32)
         self.thrust_pub       = rospy.Publisher('stabilizer/thrust', Float32)
         self.yaw_pub          = rospy.Publisher('stabilizer/yaw', Float32)
+        self.asl_pub          = rospy.Publisher('baro/asl', Float32)
+        self.zSpeed_pub       = rospy.Publisher('altHold/zSpeed', Float32)
+        self.altReference_pub = rospy.Publisher('altHold/target', Float32)
  
         rospy.Subscriber('pitch', UInt16, self.set_pitch)
         rospy.Subscriber('roll', UInt16, self.set_roll)
@@ -109,11 +117,15 @@ class CrazyflieNode:
         
         #TODO: should be configurable, and support multiple devices
         self.crazyflie.open_link("radio://0/10/250K")
- 
+    def getZ(self):
+        return self.accel_z
+
     def shut_down(self):
         try:
             self.pitch_log.stop()
             self.altimeter_log.stop()
+            self.accel_log.stop()
+            self.motor_log.stop()
         finally:
             self.crazyflie.close_link()
 
@@ -122,23 +134,15 @@ class CrazyflieNode:
         self.link_status_pub.publish(self.link_status)
 
     def connectSetupFinished(self, linkURI):
-        
         self.link_status = "Connect Setup Finished"
         self.link_status_pub.publish(self.link_status)
-        
-	self.setupAltimeterLog()
+        self.setupAltimeterLog()
         self.setupStabilizerLog()
+        self.setupAccelLog()
+        self.setupMotorLog()
 
-        """
-        Configure the logger to log accelerometer values and start recording.
- 
-        The logging variables are added one after another to the logging
-        configuration. Then the configuration is used to create a log packet
-        which is cached on the Crazyflie. If the log packet is None, the
-        program exits. Otherwise the logging packet receives a callback when
-        it receives data, which prints the data from the logging packet's
-        data dictionary as logging info.
-        """
+    #Accelerometer Logging
+    def setupAccelLog(self):
         # Set accelerometer logging config
         accel_log_conf = LogConfig("Accel", 10)
         accel_log_conf.addVariable(LogVariable("acc.x", "float"))
@@ -154,11 +158,14 @@ class CrazyflieNode:
         else:
             print("acc.x/y/z not found in log TOC")
 
+    #Motor Logging
+    def setupMotorLog(self):
         motor_log_conf = LogConfig("Motor", 10)
         motor_log_conf.addVariable(LogVariable("motor.m1", "int32_t"))
         motor_log_conf.addVariable(LogVariable("motor.m2", "int32_t"))
         motor_log_conf.addVariable(LogVariable("motor.m3", "int32_t"))
         motor_log_conf.addVariable(LogVariable("motor.m4", "int32_t"))
+
  
         # Now that the connection is established, start logging
         self.motor_log = self.crazyflie.log.create_log_packet(motor_log_conf)
@@ -168,10 +175,16 @@ class CrazyflieNode:
             self.motor_log.start()
         else:
             print("motor.m1/m2/m3/m4 not found in log TOC")
- 
+
+    #Barometer, Height Above Sea Level, and Z-Axis Velocity Logging
     def setupAltimeterLog(self):
         log_conf = LogConfig("Altimeter", 10)
         log_conf.addVariable(LogVariable("baro.pressure", "float")) #see crazyflie-firmware/stabilizer.c file
+        log_conf.addVariable(LogVariable("altHold.zSpeed", "float")) 
+        log_conf.addVariable(LogVariable("altHold.vSpeedASL", "float")) 
+        log_conf.addVariable(LogVariable("altHold.vSpeedAcc", "float")) 
+        log_conf.addVariable(LogVariable("baro.asl", "float"))
+        log_conf.addVariable(LogVariable("altHold.target", "float"))
 
         self.altimeter_log = self.crazyflie.log.create_log_packet(log_conf)
  
@@ -182,6 +195,7 @@ class CrazyflieNode:
         else:
             print("barometer ERROR")
 
+    #Gyro Logging
     def setupStabilizerLog(self):
         log_conf = LogConfig("Pitch", 10)
         log_conf.addVariable(LogVariable("stabilizer.pitch", "float"))
@@ -234,16 +248,23 @@ class CrazyflieNode:
                         (data["m1"], data["m2"], data["m3"], data["m4"]))
 
     def log_pitch_data(self, data):
-        #rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
+        # rospy.loginfo("Gyro: Pitch=%.2f, Roll=%.2f, Yaw=%.2f" %
         #    (data["stabilizer.pitch"], data["stabilizer.roll"], data["stabilizer.yaw"]))
+
         self.pitch  = data["stabilizer.pitch"]
         self.roll   = data["stabilizer.roll"]
         self.thrust = data["stabilizer.thrust"]
         self.yaw    = data["stabilizer.yaw"]
+        self.logStarted = True
 
     def log_altimeter_data(self, data):
         self.pressure = data["baro.pressure"]
-        rospy.loginfo("Data: %.2f" % (data["baro.pressure"]))
+        self.zSpeed = data["altHold.zSpeed"]
+        self.asl = data["baro.asl"]
+        self.vSpeedAcc = data["altHold.vSpeedAcc"]
+        self.vSpeedASL = data["altHold.vSpeedASL"]
+        self.altReference = data["altHold.target"]
+        rospy.loginfo("ASL: %f" % self.asl)
 
     #pitch/roll/thrust/yaw setting function
     def set_pitch(self, data):
@@ -275,61 +296,65 @@ class CrazyflieNode:
     def set_m4(self, thrust):
         self.crazyflie.param.set_value("motors.motorPowerM4", thrust)
 
+    # TO-DO: Safety Shut Down
     def motors_shut_down(self):
         self.set_m1("0")
         self.set_m2("0")
         self.set_m3("0")
         self.set_m4("0")
 
-    def control_pitch(self, desired):
-        self.cmd_pitch += self.stabilizer_kp * (desired - self.pitch)
-        #rospy.loginfo(rospy.get_name() + ": Setting pitch to: %d" % self.cmd_pitch) 
+    def control_height(self):
+        self.altHold = True
 
-    def control_roll(self, desired):
-        self.cmd_roll += self.stabilizer_kp * (desired - self.roll) 
-        #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll)   
-    
-    def control_yaw(self, desired):
-        self.cmd_yaw += self.stabilizer_kp * (desired - self.yaw) 
-        #rospy.loginfo(rospy.get_name() + ": Setting roll to: %d" % self.cmd_roll) 
-
-    def control_height(self, desired):
-        self.cmd_thrust += self.thrust_kp * (desired - self.pressure) 
-
-	if (self.cmd_thrust > 60000):
-            self.cmd_thrust = 60000
-        elif (self.cmd_thrust < 1000):
-            self.cmd_thrust = 1000
-
-        #rospy.loginfo(rospy.get_name() + ": Setting thrust to: %d" % self.cmd_thrust)
-        print str(self.cmd_thrust) + " " + str(self.pressure)
+    def publish_data(self):
+        # self.link_quality_pub.publish(self.link_quality)
+        # self.packet_count_pub.publish(self.packetsSinceConnection)
+        # self.motor_status_pub.publish(self.motor_status)
+        # self.pitch_pub.publish(self.pitch)
+        # self.roll_pub.publish(self.roll)
+        # self.thrust_pub.publish(self.thrust)
+        # self.yaw_pub.publish(self.yaw)
+        self.asl_pub.publish(self.asl)
+        self.altReference_pub.publish(self.altReference)
+        # self.zSpeed_pub.publish(self.zSpeed)
 
     # main loop 
-    def run_node(self):
-        self.cmd_thrust = 40000 #value subject to change based on battery life
-        #self.link_quality_pub.publish(self.link_quality)
-        #self.packet_count_pub.publish(self.packetsSinceConnection)
-        #self.motor_status_pub.publish(self.motor_status)
-        #self.pitch_pub.publish(self.pitch)
-        #self.roll_pub.publish(self.roll)
-        #self.thrust_pub.publish(self.thrust)
-        #self.yaw_pub.publish(self.yaw)
-        # CONTROLLERS
-        self.control_pitch(0.0)
-        self.control_roll(0.0)
-        self.control_yaw(0.0)
+    def run_node(self, time):
+        self.cmd_thrust = 40000
+        print "Time since start: ", time
+        if (time > 2):
+            print "---Stabilizing Height---"
+            self.control_height()
 
-	#self.control_height(1003.45)
+        #Send commands to the Crazyflie
+        if (self.altHold):
+            self.crazyflie.param.set_value("flightmode.althold", "True")
+            self.crazyflie.commander.send_setpoint(0, 0, 0, 32767)
+        else:
+            self.yaw += 1
+            self.crazyflie.commander.send_setpoint(0.0, 0.0, self.yaw, self.cmd_thrust)
 
-        # Send commands to the Crazyflie
-        #rospy.loginfo(rospy.get_name() + ": Sending setpoint: %f, %f, %f, %d" % (self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust))
-        self.crazyflie.commander.send_setpoint(self.cmd_roll, self.cmd_pitch, self.cmd_yaw, self.cmd_thrust)
-        
-        #test
-        # self.set_m1("20000")
-        # self.set_thrust(20000);
+        #rosbag record
+        self.publish_data()
 
-     
+    def pitch_node(self, t, degree):
+        if (t > 4):
+            print "--- Pitching ---"
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            loop_rate = rospy.Rate(100)
+            for i in range(0, 50):
+                self.crazyflie.commander.send_setpoint(degree, 0.0, 0.0, self.thrust)
+                loop_rate.sleep()
+
+    def roll_node(self, t, degree):
+        if (t > 4):
+            print "--- Rolling ---"
+            self.crazyflie.param.set_value("flightmode.althold", "False")
+            loop_rate = rospy.Rate(100)
+            for i in range(0, 50):
+                self.crazyflie.commander.send_setpoint(0.0, degree, 0.0, self.thrust)
+                loop_rate.sleep()
+
 def run():
     # Init the ROS node here, so we can split functionality
     # for this node across multiple classes        
@@ -337,13 +362,20 @@ def run():
     print "yes lets start!!\n"
     #TODO: organize this into several classes that monitor/control one specific thing
     node = CrazyflieNode()
-    loop_rate = rospy.Rate(10) #10 Hz
+    loop_rate = rospy.Rate(50) #100 Hz
+    print "Waiting for Sensor Callbacks..."
+    while (node.logStarted == False):
+        pass
+    print "Starting..."
+    start = rospy.get_time()
+
+    DEGREE = 8.0
     while not rospy.is_shutdown():
-        node.run_node()
+        node.run_node(rospy.get_time() - start)
         loop_rate.sleep()
+
     node.motors_shut_down()
     node.shut_down()
-        
-        
+               
 if __name__ == '__main__':
     run()
