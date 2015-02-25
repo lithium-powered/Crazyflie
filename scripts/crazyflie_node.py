@@ -130,10 +130,12 @@ class CrazyflieNode:
             self.crazyflie.close_link()
 
     def connectionInitiated(self, linkURI):
+	print "Connection Initiated"
         self.link_status = "Connection Initiated"
         self.link_status_pub.publish(self.link_status)
 
     def connectSetupFinished(self, linkURI):
+	print "Connection Finished"
         self.link_status = "Connect Setup Finished"
         self.link_status_pub.publish(self.link_status)
         self.setupAltimeterLog()
@@ -205,7 +207,7 @@ class CrazyflieNode:
         #log_conf.addVariable(LogVariable("altimeter.pressure", "float"))
 
         self.pitch_log = self.crazyflie.log.create_log_packet(log_conf)
- 
+ 	print("callback set")
         if self.pitch_log is not None:
             self.pitch_log.dataReceived.add_callback(self.log_pitch_data)
             self.pitch_log.start()
@@ -214,6 +216,7 @@ class CrazyflieNode:
             print("stabilizer.pitch/roll/thrust/yaw not found in log TOC")
         
     def connected(self, linkURI):
+	print("Connected")
         self.packetsSinceConnection = 0
         self.link_status = "Connected"
         self.link_status_pub.publish(self.link_status)
@@ -320,7 +323,7 @@ class CrazyflieNode:
 
     # main loop 
     def run_node(self, time):
-        self.cmd_thrust = 40000
+        self.cmd_thrust = 20000
         print "Time since start: ", time
         if (time > 2):
             print "---Stabilizing Height---"
@@ -365,6 +368,7 @@ def run():
     loop_rate = rospy.Rate(50) #100 Hz
     print "Waiting for Sensor Callbacks..."
     while (node.logStarted == False):
+	print(node.logStarted)
         pass
     print "Starting..."
     start = rospy.get_time()
