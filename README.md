@@ -23,7 +23,7 @@ Summarized steps to run the crazyflie and webcam:
 Student Researchers:
 + Liquin Yu | <liyu@berkeley.edu> (2015)
 + Emily Chen | <emilychen55@gmail.com> (2014-2015)
-+ Maruchi Kim | <maruchi.kim@gmail.com> (2014)
++ Maruchi Kim | <maruchi.kim@gmail.com> (2014-2015)
 + James Lam Yi | <jlamyi@berkeley.edu> (2014)
 
 *README updated by Emily Chen on 06/03/15*
