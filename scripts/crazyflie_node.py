@@ -28,7 +28,6 @@ import math
 import time
 
 import cflib.crtp
-from pid import PID
 
 from cfclient.utils.logconfigreader import LogConfig
 from cfclient.utils.logconfigreader import LogVariable
